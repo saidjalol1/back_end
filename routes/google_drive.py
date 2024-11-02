@@ -1,25 +1,12 @@
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
 from fastapi import UploadFile
+import os
+import shutil
 
-def authenticate_google_drive(credentials_file: str):
-    credentials = service_account.Credentials.from_service_account_file(
-        credentials_file, scopes=['https://www.googleapis.com/auth/drive.file']
-    )
-    return build('drive', 'v3', credentials=credentials)
+STATIC_DIR = "static/images"
+os.makedirs(STATIC_DIR, exist_ok=True)
 
-
-def upload_image_to_google_drive(upload_file: UploadFile, service) -> str:
-    file_metadata = {
-        'name': upload_file.filename,  
-        'mimeType': upload_file.content_type 
-    }
-
-
-    media = MediaIoBaseUpload(upload_file.file, mimetype=upload_file.content_type)
-
-  
-    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-
-    return f"https://drive.google.com/uc?id={file.get('id')}"
+def upload_image_to_tmp(image_data, image_name) -> str:
+    logo_path = os.path.join(STATIC_DIR, image_name)
+    with open(logo_path, "wb") as f:
+        f.write(image_data)
+    return f"/static/images/{image_name}"

@@ -28,7 +28,7 @@ class TagRead(TagBase):
 class PostBase(BaseModel):
     title: str
     body: str
-    image: Optional[str] = None
+    image: str
     category_id: int
     tags: List[int]
 

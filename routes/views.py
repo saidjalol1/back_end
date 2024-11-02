@@ -1,16 +1,15 @@
-from typing import List
-from fastapi import HTTPException, UploadFile, File
+from typing import List, Annotated
+from fastapi import HTTPException, UploadFile, File, Request, Response, Cookie
 from sqlalchemy.orm import Session
 from models import Post, Category, Tag 
 from pydantics.posts import PostCreate, CategoryCreate, TagCreate
-from .google_drive import authenticate_google_drive, upload_image_to_google_drive
+
 
 class BlogView:
-    def __init__(self, db: Session,  credentials_file: str):
+    def __init__(self, db: Session):
         self.db = db
-        self.service = authenticate_google_drive(credentials_file)
     # Create a new blog post
-    def create_post(self, post: PostCreate, image: UploadFile = File(...)):
+    def create_post(self, post: PostCreate):
         category = self.db.query(Category).filter(Category.id == post.category_id).first()
         if not category:
             raise HTTPException(status_code=400, detail="Category not found")
@@ -18,13 +17,11 @@ class BlogView:
         tags = self.db.query(Tag).filter(Tag.id.in_(post.tags)).all()
         if len(tags) != len(post.tags):
             raise HTTPException(status_code=400, detail="Some tags not found")
-        
-        image_url = upload_image_to_google_drive(image, self.service)
          
         new_post = Post(
             title=post.title,
             body=post.body,
-            image=image_url,
+            image=post.image,
             category_id=post.category_id,
             tags=tags
         )
@@ -34,12 +31,75 @@ class BlogView:
         return new_post
 
     # Get a post by ID
-    def get_post(self, post_id: int):
+    def get_post(self, post_id: int, request, response):
         post = self.db.query(Post).filter(Post.id == post_id).first()
         if not post:
             raise HTTPException(status_code=404, detail="Post not found")
-        return post
+         # Check and update the views in the client's browser session
+        viewed_posts = request.cookies.get("posts")
+        print(viewed_posts)
+        if viewed_posts:
+            viewed_posts = viewed_posts.split(",")
+            print(viewed_posts)
+        else:
+            viewed_posts = []
 
+        if str(post_id) not in viewed_posts:
+            post.views += 1  
+            request.cookies.get("posts")
+            viewed_posts.append(str(post_id))
+            response.set_cookie(key="posts", value=",".join(viewed_posts), samesite="None", secure=True)  # Update cookie with viewed posts
+            self.db.commit()
+            self.db.refresh(post)
+            print(request.cookies.get("posts"))
+        else:
+            pass
+        return post
+    def like_post(self, post_id: int, request, response, option):
+        post = self.db.query(Post).filter(Post.id == post_id).first()
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
+         # Check and update the views in the client's browser session
+        liked_posts = request.cookies.get("liked_posts")
+        disliked_posts = request.cookies.get("disliked_posts")
+        print(liked_posts)
+        if liked_posts:
+            liked_posts = liked_posts.split(",")
+        else:
+            liked_posts = []
+            
+        if disliked_posts:
+            disliked_posts = disliked_posts.split(",")
+        else:
+            disliked_posts = []
+
+        if str(post_id) not in liked_posts and option == "like":
+            post.likes += 1  
+            if str(post_id) in disliked_posts:
+                post.dislikes -= 1
+                self.db.commit()
+                disliked_posts.remove(str(post_id))
+                response.set_cookie(key="disliked_posts", value=",".join(disliked_posts), samesite="None", secure=True)
+            liked_posts.append(str(post_id))
+            response.set_cookie(key="liked_posts", value=",".join(liked_posts), samesite="None", secure=True)  # Update cookie with viewed posts
+            self.db.commit()
+            self.db.refresh(post)
+            print(request.cookies.get("liked_posts"))
+        elif str(post_id) not in disliked_posts and option == "dislike":
+            post.dislikes += 1  
+            if str(post_id) in liked_posts:
+                post.likes -= 1
+                self.db.commit()
+                liked_posts.remove(str(post_id))
+                response.set_cookie(key="liked_posts", value=",".join(liked_posts), samesite="None", secure=True)
+            disliked_posts.append(str(post_id))
+            response.set_cookie(key="disliked_posts", value=",".join(disliked_posts), samesite="None", secure=True)  # Update cookie with viewed posts
+            self.db.commit()
+            self.db.refresh(post)
+            print(request.cookies.get("disliked_posts"))
+        else:
+            pass
+        return post
     # Get all posts
     def get_all_posts(self):
         return self.db.query(Post).all()
@@ -59,8 +119,7 @@ class BlogView:
         self.db.commit()
         self.db.refresh(post)
         return post
-
-    # Delete a post
+    
     def delete_post(self, post_id: int):
         post = self.db.query(Post).filter(Post.id == post_id).first()
         if not post:

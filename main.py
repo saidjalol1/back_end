@@ -1,6 +1,6 @@
 from datetime import timedelta
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status, Depends, staticfiles
 from fastapi.security import OAuth2PasswordRequestForm
 from auth import auth_main, token
 from pydantics import user_models
@@ -9,6 +9,7 @@ import routes
 import routes.category_routes
 import routes.post_routest
 import routes.tag_routes
+from starlette.middleware.sessions import SessionMiddleware
 
 app = FastAPI()
 app.add_middleware(
@@ -21,7 +22,9 @@ app.add_middleware(
 app.include_router(routes.post_routest.router)
 app.include_router(routes.category_routes.router)
 app.include_router(routes.tag_routes.router)
+app.mount("/static", staticfiles.StaticFiles(directory="static/"), name="static")
 
+app.add_middleware(SessionMiddleware, secret_key="gugiuggbgjkh")
 
 @app.get("/")
 async def welcome():
@@ -29,7 +32,7 @@ async def welcome():
 
 
 @app.post("/token")
-async def login(user_token : OAuth2PasswordRequestForm = Depends() ,database = database_dep):
+async def login(user_token : user_models.UserLogin,database = database_dep):
     try:
         user = auth_main.authenticate_user(user_token.username,user_token.hashed_password, database)
         print(user)
